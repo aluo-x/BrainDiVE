@@ -10,11 +10,11 @@ import timm
 import torch
 import numpy as np
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
-from data_loader_multi_subj_split import neural_loader
-from neurips_sag import mypipelineSAG
+from encoder_dataloader import neural_loader
+from brain_guide_pipeline import mypipelineSAG
 import pickle
 import gc
-import model_vit
+import encoder_model_vit
 import nibabel as nib
 import os
 import time
