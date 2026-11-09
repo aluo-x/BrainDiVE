@@ -1,14 +1,11 @@
 import numpy as np
-import nibabel as nib
 import os
+from options import Options, load_from_nii
 
-nsd_root = '/mnt/lexar/NSD/';
-beta_root = '/mnt/lexar/NSD/nsddata_betas/ppdata/';
-output_dir = 'pre_processing_results';
-subjects = [1, 2, 3, 4, 5, 6, 7, 8]
-
-def load_from_nii(nii_file):
-    return nib.load(nii_file).get_fdata(dtype=np.float32)
+options = Options().parse()
+beta_root = options.beta_root
+output_dir = options.preprocessing_dir
+subjects = options.subjects
 
 all_subject_rois = dict()
 
@@ -18,7 +15,7 @@ for subject in subjects:
     raw_path = "{}/subj0{}/func1pt8mm/betas_fithrf_GLMdenoise_RR/ncsnr.nii.gz".format(beta_root, subject)
     raw_data = load_from_nii(raw_path)
 
-    full_path = "{}/nsddata/ppdata/subj0{}/func1pt8mm/roi/{}".format(nsd_root, subject, roi_strings)
+    full_path = os.path.join(options.roi_root.format(subject), roi_strings)
     all_roi = load_from_nii(full_path)
     all_rois_long = all_roi.astype(np.int64)
     unique_rois = np.unique(all_rois_long)

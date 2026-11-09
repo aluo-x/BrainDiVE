@@ -8,7 +8,6 @@ The 3D view colors the selected mask voxels by R². It is a voxel-space
 visualization, not a FreeSurfer cortical-surface rendering.
 """
 import os
-import argparse
 from pathlib import Path
 import pickle
 
@@ -18,6 +17,8 @@ import matplotlib.pyplot as plt
 import h5py
 import numpy as np
 import pandas as pd
+from scipy.io import loadmat
+from data_maker.options import Options
 
 
 def norm_id(value):
@@ -74,7 +75,6 @@ def get_shared_ids(nsd_root, csv_path, expdesign_path=None):
                     "pass --expdesign."
                 )
             mat_path = candidates[0]
-        from scipy.io import loadmat
         mat = loadmat(str(mat_path))
         if "sharedix" not in mat:
             raise ValueError(f"No sharedix array in {mat_path}")
@@ -184,20 +184,21 @@ def save_voxel_cloud(r2, mask_path, split, n, outdir, vmax=0.5):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Subject 1 voxel-wise R² and spatial plots.")
-    p.add_argument("--h5", default="results/eval/subject_1_neurips_split_VIT_last_fully_linear.h5py")
-    p.add_argument("--nsd-root", default="/mnt/lexar/NSD")
+    config = Options()
+    p = config.parser
+    p.description = "Subject 1 voxel-wise R² and spatial plots."
+    p.add_argument("--h5", default=None)
     p.add_argument("--nsd-csv", default=None)
     p.add_argument("--expdesign", default=None)
     p.add_argument("--mask", default=None, help="shared volume mask pickle; if subject-first 4D/list, uses index 0 (Subject 1)")
     p.add_argument("--subject", default="1", help="Label only; this script expects the Subject 1 HDF5 by default")
     p.add_argument("--map-vmax", type=float, default=0.5, help="Upper R² color limit (default 0.5)")
-    args = p.parse_args()
+    args = config.parse()
 
-    h5_path = Path(args.h5)
+    h5_path = Path(args.h5 or os.path.join(args.save_loc, 'eval', 'subject_1_neurips_split_VIT_last_fully_linear.h5py'))
     if not h5_path.exists():
         raise FileNotFoundError(f"Evaluation HDF5 not found: {h5_path}")
-    outdir = str(h5_path.resolve().parent)
+    outdir = os.path.join(args.save_loc, 'eval')
     os.makedirs(outdir, exist_ok=True)
 
     csv_path = locate_csv(args.nsd_root, args.nsd_csv)

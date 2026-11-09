@@ -7,7 +7,7 @@ from time import time
 
 from encoder_dataloader import neural_loader
 import encoder_model_vit as model_vit
-from encoder_options import Options
+from data_maker.options import Options
 torch.backends.cudnn.benchmark=True
 
 def test_net(rank, other_args):
@@ -61,9 +61,9 @@ def test_net(rank, other_args):
     criterion = torch.nn.MSELoss()
     losses = 0.0
     offset = 0.0
-    output_dir = os.path.join(os.getcwd(), "results", "eval")
+    output_dir = os.path.join(other_args.save_loc, "eval")
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "{}.h5py".format(cur_args.exp_name))
+    output_path = os.path.join(output_dir, "{}.h5py".format(other_args.exp_name))
     print("Saving to {}".format(output_path))
     file = h5py.File(output_path, "w")
 

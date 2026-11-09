@@ -1,25 +1,28 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import ast
 import imageio
 import os
 import h5py
 
-from skimage.transform import rescale, resize
 from PIL import Image
+from options import Options
 
-nsd_root = '/mnt/lexar/NSD/';
-coco_path = '/mnt/lexar/COCO';
-output_dir = '/mnt/lexar/BrainDiVE/data_maker/pre_processing_results';
+options = Options().parse()
+
+nsd_root = options.nsd_root
+coco_path = options.coco_root
+output_dir = options.preprocessing_dir
+os.makedirs(output_dir, exist_ok=True)
 
 csv_obj = pd.read_csv(
-    os.path.join(nsd_root, "nsddata", "experiments", "nsd", "nsd_stim_info_merged.csv")
+    os.path.join(nsd_root, 'nsddata', 'experiments', 'nsd', 'nsd_stim_info_merged.csv')
 )
 
 
 def coco_crop(img, cropbox_in):
     if type(cropbox_in) is str:
-        cropbox = eval(cropbox_in)
+        cropbox = ast.literal_eval(cropbox_in)
     else:
         cropbox = cropbox_in
 
@@ -31,32 +34,21 @@ def coco_crop(img, cropbox_in):
     return img[top:bottom, left:right]
 
 def get_cocopath(coco_id_):
-    if not isinstance(coco_id_, int):
-        mycoco_id = str(int(coco_id_))
-    else:
-        mycoco_id = str(coco_id_)
-    k = mycoco_id.zfill(12)+".jpg"
-    f1 = os.path.join(coco_path, "train2017", k) 
-    f2 = os.path.join(coco_path, "test2017", k) 
-    f3 = os.path.join(coco_path, "val2017", k) 
-    if os.path.isfile(f1):
-        ff = f1
+    filename = str(int(coco_id_)).zfill(12) + '.jpg'
+    for partition in ['val2017', 'test2017', 'train2017']:
+        path = os.path.join(coco_path, partition, filename)
+        if os.path.isfile(path):
+            return path
+    raise FileNotFoundError(f"COCO image {filename} not found under {coco_path}")
 
-    if os.path.isfile(f2):
-        ff = f2
-
-    if os.path.isfile(f3):
-        ff = f3
-    return ff
-
-all_coco = list(csv_obj["cocoId"])
-file = h5py.File(os.path.join(output_dir, "image_data.h5py"), "w")
+all_coco = list(csv_obj['cocoId'])
+file = h5py.File(options.image_path, "w")
 zz = 0
 for i in all_coco:
     zz += 1
     if zz %100 == 0:
         print(zz)
-    current_box = list(csv_obj[csv_obj["cocoId"]==int(i)]["cropBox"])[0]
+    current_box = list(csv_obj[csv_obj['cocoId']==int(i)]['cropBox'])[0]
     example_img = imageio.v2.imread(get_cocopath(i))
     cropped_image = np.array(coco_crop(example_img, current_box))
     cropped_image = Image.fromarray(cropped_image)

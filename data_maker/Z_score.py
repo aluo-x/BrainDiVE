@@ -1,34 +1,23 @@
-import sys
 import os
 import numpy as np
 import h5py
-import PIL.Image
-import nibabel as nib
-import pandas as pd
 import pickle
-import time
 import gc
-import matplotlib.pyplot as plt
-import nibabel as nib
 
 from scipy.io import loadmat
-sys.path.append("/mnt/lexar/modfit/code")
-from utils import default_paths, roi_utils, prf_utils
-from model_fitting import initialize_fitting
+from options import Options, all_subjects, load_from_nii
 
-nsd_root = '/mnt/lexar/NSD/';
-stim_root = nds_root + 'nsddata_stimuli/stimuli/nsd';
-beta_root = nsd_root + 'nsddata_betas/ppdata/';
-partition_root = 'image_data_partitions.npy';
-output_dir = '/mnt/lexar/BrainDiVE/results/pre_processing_results/NSD_zscored';
+options = Options().parse()
+
+nsd_root = options.nsd_root
+beta_root = options.beta_root
+partition_root = os.path.join(options.preprocessing_dir, 'image_data_partitions.npy')
+output_dir = options.zscored_dir
 
 trials_per_sess = 750
 sess_per_subj = 40
 # hard coded values based on sessions that are missing for some subs
 max_sess_each_subj = [40,40,32,30,40,32,40,30]
-
-def load_from_nii(nii_file):
-    return nib.load(nii_file).get_fdata(dtype=np.float32)
 
 def get_session_inds_full():
     session_inds = np.repeat(np.arange(0,sess_per_subj), trials_per_sess)
@@ -72,12 +61,12 @@ def load_betas(subject, sessions=[0], voxel_mask=None,  zscore_betas_within_sess
     else:
         beta_subj_folder = os.path.join(beta_root, 'subj%02d'%subject, 'nativesurface', 'betas_fithrf_GLMdenoise_RR')
 
-    print('Data is located in: %s...'%beta_subj_folder)
+    print("Data is located in: %s..."%beta_subj_folder)
 
     if np.any((np.array(sessions)+1)>max_sess_each_subj[subject-1]):
-        print('attempting to load sessions:')
+        print("attempting to load sessions:")
         print(sessions+1)
-        raise ValueError('trying to load sessions that do not exist for subject %d, only has up to session %d'\
+        raise ValueError("trying to load sessions that do not exist for subject %d, only has up to session %d"\
                          %(subject, max_sess_each_subj[subject-1]))
 
     n_trials = len(sessions)*trials_per_sess
@@ -98,9 +87,9 @@ def load_betas(subject, sessions=[0], voxel_mask=None,  zscore_betas_within_sess
 
             # Load volume space nifti
             fn2load = os.path.join(beta_subj_folder, 'betas_session%02d.nii.gz'%(se+1))
-            print('Loading from %s...'%fn2load)
+            print("Loading from %s..."%fn2load)
             values = load_from_nii(fn2load).transpose((3,0,1,2))
-            print('Raw data:')
+            print("Raw data:")
             print(values.dtype, np.min(values), np.max(values), values.shape)
 
             betas = values.reshape((len(values), -1), order='C')
@@ -111,14 +100,14 @@ def load_betas(subject, sessions=[0], voxel_mask=None,  zscore_betas_within_sess
             fn2load1 = os.path.join(beta_subj_folder, 'lh.betas_session%02d.hdf5'%(se+1))
             fn2load2 = os.path.join(beta_subj_folder, 'rh.betas_session%02d.hdf5'%(se+1))
 
-            print('Loading from %s...'%fn2load1)
+            print("Loading from %s..."%fn2load1)
             values1 = load_from_hdf5(fn2load1)
-            print('Raw data:')
+            print("Raw data:")
             print(values1.dtype, np.min(values1), np.max(values1), values1.shape)
 
-            print('Loading from %s...'%fn2load2)
+            print("Loading from %s..."%fn2load2)
             values2 = load_from_hdf5(fn2load2)
-            print('Raw data:')
+            print("Raw data:")
             print(values2.dtype, np.min(values2), np.max(values2), values2.shape)
 
             betas = np.concatenate((values1, values2), axis=1)
@@ -336,7 +325,7 @@ def get_subj_df(subject):
 
 def make_image_data_partitions(pct_holdout=0.10):
 
-    subjects=np.concatenate([np.arange(1,9),[999]], axis=0)
+    subjects = np.array(all_subjects + [999])
     n_subjects = len(subjects)
     # fixed random seeds for each subject, to make sure shuffling is repeatable
     rndseeds = [171301, 42102, 490304, 521005, 11407, 501610, 552211, 450013, 824387]
@@ -387,13 +376,14 @@ def load_image_data_partitions(subject):
 
 if __name__ == "__main__":
 
+    os.makedirs(output_dir, exist_ok=True)
     if not os.path.exists(partition_root):
         print("\nCreate data partition")
         make_image_data_partitions()
     else:
         print(f"Data partition already exists locally: {partition_root}")
  
-    for subj in [1]:  # Change to [1, 2, 3, 4, 5, 6, 7, 8] to process all subjects.
+    for subj in options.subjects:
         print("\nStarting subject", subj)
         subject_sessions = list(range(max_sess_each_subj[subj - 1]))
         outs = get_data_splits(subj, sessions=subject_sessions)

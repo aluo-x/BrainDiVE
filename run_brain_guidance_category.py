@@ -1,24 +1,19 @@
 import os
-import timm
 import torch
 import numpy as np
 import pickle
 import gc
 import encoder_model_vit as model_vit
-import nibabel as nib
 import random
 
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers import DPMSolverMultistepScheduler
 
-from encoder_dataloader import neural_loader
+from data_maker.options import Options, load_from_nii
 from brain_guide_pipeline import mypipelineSAG
 
+options = Options().parse()
 NUM_TO_GENERATE = 5
-all_subjects = [1]
-
-def load_from_nii(nii_file):
-    return nib.load(nii_file).get_fdata()
+all_subjects = list(options.subjects)
 
 print("Creating CLIP ViT")
 # backbone = timm.create_model('vit_base_patch16_clip_224.laion2b', pretrained=True)
@@ -35,17 +30,11 @@ random.shuffle(all_subjects)
 # ["RSC", "PPA", "OPA", "FFA", "OFA"]
 experiment_id = {"bodies":0, "faces":1, "places":2, "words":3, "food":4,
                  "RSC":5, "PPA":6, "OPA":7, "FFA":8, "OFA":9}
-pre_processing_path = "/mnt/lexar/BrainDiVE/results/pre_processing/"
+pre_processing_path = options.preprocessing_dir
 
 for subject in all_subjects:
 
     print("Starting subject {}".format(str(subject)))
-    try:
-        del dataset
-    except:
-        pass
-
-
     try:
         del brain_model
     except:
@@ -54,25 +43,14 @@ for subject in all_subjects:
     torch.cuda.empty_cache()
 
 
-    class myarg():
-        def __init__(self):
-            self.subject_id = [str(subject)]
-            self.early_visual_path = "/mnt/lexar/NSD/nsddata/ppdata/subj0{}/func1pt8mm/roi/prf-visualrois.nii.gz"
-            self.neural_activity_path = pre_processing_path + "NSD_zscored/cortex_subj_{}.npy"
-            self.image_path = pre_processing_path + "image_data.h5py"
-            self.double_mask_path = pre_processing_path + "double_mask_s1.pkl"
-            self.volume_functional_path = pre_processing_path + "volume_functional_mask_s1.pkl"
-
-    other_args = myarg()
-    
-    with open(other_args.double_mask_path, "rb") as f:
+    with open(options.double_mask_path, "rb") as f:
         double_mask = pickle.load(f)
 
-    with open(other_args.volume_functional_path, "rb") as f:
+    with open(options.volume_functional_path, "rb") as f:
         functional_mask = pickle.load(f)
 
     str_subject = str(subject)
-    early_visual = load_from_nii(other_args.early_visual_path.format(str_subject)).astype(np.int32) > 0.5
+    early_visual = load_from_nii(options.early_visual_path.format(str_subject), dtype=np.float64).astype(np.int32) > 0.5
     volume_functional_mask = functional_mask[subject - 1]
     
     neural_size = int(np.sum(double_mask[subject - 1]))
@@ -85,7 +63,7 @@ for subject in all_subjects:
     higher_vis_mask = torch.from_numpy(np.logical_not(early_visual)[volume_functional_mask]).bool()
 
     brain_model = model_vit.downproject_CLIP_split_linear(num_early_output=early_sizes, num_higher_output=higher_sizes)
-    weights = torch.load("/mnt/lexar/braindive_encoder_weights/S1/subject_{}_neurips_split_VIT_last_fully_linear/00100.chkpt".format(subject))
+    weights = torch.load(options.checkpoint_path.format(subject))
 
     brain_model.load_state_dict(weights["network"], strict=True)
     brain_model.cuda()
@@ -114,7 +92,6 @@ for subject in all_subjects:
     pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
     pipe2 = pipe.to("cuda")
 
-    # regions = ["bodies", "faces", "places", "words", "food"]
     # regions = ["RSC", "PPA", "OPA", "FFA", "OFA"]
     regions = ["PPA", "FFA"]
     random.seed(os.urandom(5))
@@ -154,8 +131,8 @@ for subject in all_subjects:
 
         if meta_region in ["bodies", "faces", "places", "words"]:
             roi_strings = "floc-{}.nii.gz".format(meta_region)
-            roi_id_path = "/mnt/lexar/NSD/nsddata/ppdata/subj0{}/func1pt8mm/roi/{}".format(subject, roi_strings)
-            loaded_roi_ids = load_from_nii(roi_id_path).astype(np.int32)
+            roi_id_path = os.path.join(options.roi_root.format(subject), roi_strings)
+            loaded_roi_ids = load_from_nii(roi_id_path, dtype=np.float64).astype(np.int32)
             
             all_sub_masks = []
             for desired_id in region_sub_id_list[region]:
@@ -163,19 +140,19 @@ for subject in all_subjects:
             all_sub_masks = np.logical_or.reduce(all_sub_masks)
                      
             tstat_filename = tstat_file_list[meta_region]
-            t_stats_path = "/mnt/lexar/NSD/nsddata/ppdata/subj0{}/func1pt8mm/{}".format(subject, tstat_filename)
+            t_stats_path = os.path.join(os.path.dirname(options.roi_root.format(subject)), tstat_filename)
             if not os.path.exists(t_stats_path):
                raise FileNotFoundError("T-statistic map not found.")
 
-            t_stats = load_from_nii(t_stats_path).astype(np.int32)
+            t_stats = load_from_nii(t_stats_path, dtype=np.float64).astype(np.int32)
             t_mask = t_stats > 2
             if all_sub_masks.shape != t_mask.shape:
                raise ValueError(
-                  "ROI and t-statistic maps have different shapes:{} vs {}".format(nsd_roi_mask.shape, t_mask.shape))
+                  "ROI and t-statistic maps have different shapes:{} vs {}".format(all_sub_masks.shape, t_mask.shape))
             region_mask = np.logical_and(t_mask, all_sub_masks)
 
         elif meta_region in ["food"]:
-            region_mask_string = "/mnt/lexar/BrainDiVE/data_maker/pre_processing_results/food_s{}.npy".format(subject)
+            region_mask_string = os.path.join(pre_processing_path, 'food_s{}.npy'.format(subject))
             region_mask = np.load(region_mask_string)>0.5
         else:
             print("mistake!")
@@ -199,7 +176,7 @@ for subject in all_subjects:
             # pred_response[higher_vis_mask] = torch.zeros(torch.sum(higher_vis_mask)).to("cuda")
             return -torch.mean(pred_response[mask_tensor])
 
-        output_dir = '/mnt/lexar/BrainDiVE/results/diffusion';
+        output_dir = os.path.join(options.save_loc, 'diffusion')
         current_folder = os.path.join(output_dir, "S{}".format(subject), region + "_all_t2")
         os.makedirs(current_folder, exist_ok=True)
 

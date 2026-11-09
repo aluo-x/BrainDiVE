@@ -33,19 +33,6 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
-# def shuffle_shift(input_image, extent=2, seed=0):
-#     random.seed(seed)
-#     offset_x = random.randint(-extent, extent)
-#     offset_y = random.randint(-extent, extent)
-#     orig_shape = input_image.shape
-#     temp = input_image[:, :, max(0, offset_x):min(orig_shape[2], orig_shape[2] + offset_x),
-#            max(0, offset_y):min(orig_shape[3], orig_shape[3] + offset_y)]
-#     #     temp = torch.nn.functional.pad(temp, (max(0,offset_y), max(0, -offset_y), max(0,offset_x), max(0, -offset_x)), mode='replicate')
-#     temp_out = torch.nn.functional.pad(temp, (max(0, -offset_y), max(0, offset_y), max(0, -offset_x), max(0, offset_x)),
-#                                        mode='replicate')
-#     return temp_out
-
-
 # processes and stores attention probabilities
 class CrossAttnStoreProcessor:
     def __init__(self):
@@ -474,17 +461,7 @@ class mypipelineSAG(DiffusionPipeline):
             pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
             fac = torch.sqrt(beta_prod_t)
             sample = pred_original_sample * (fac) + latents * (1 - fac)
-        #             sample = pred_original_sample
-        #             image = self.decode_latents(pred_original_sample.detach())
-        #             image2 = self.decode_latents(latents.detach())
-        #             image3 = self.decode_latents(sample.detach())
-        #             print(image.shape, "IMAGE SHAPE", fac)
-        #             image = np.concatenate([image, image2, image3], axis=2)
-        #             image = self.numpy_to_pil(image)[0]
-        #             plt.imshow(image)
-        #             plt.title(timestep)
-        #             plt.show()
-        #         return noise_pred_original, latents
+
         elif isinstance(self.scheduler, LMSDiscreteScheduler):
             sigma = self.scheduler.sigmas[index]
             sample = latents - sigma * noise_pred
@@ -719,14 +696,8 @@ class mypipelineSAG(DiffusionPipeline):
             # perform guidance
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                #                     if i == 0:
-                #                         print(torch.flatten(noise_pred_uncond)[:3], torch.flatten(noise_pred_text)[:3], "uncond noises")
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # noise_pred = clamp_latent(noise_pred)
-                # print(noise_pred.shape, "NOISE SHAPE")
-            #                 if i ==0:
-            #                     print(torch.flatten(latents)[:3], "LATENT")
             # perform self-attention guidance with the stored self-attentnion map
             if do_self_attention_guidance:
                 # classifier-free guidance produces two chunks of attention map
@@ -782,10 +753,6 @@ class mypipelineSAG(DiffusionPipeline):
                 )
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-            # print(latents.shape, "LATENTS SHAPE")
-            # old_latents_uncond = latents[0]+0.0
-            # latents = clamp_latent(latents)
-            # latents[0] = old_latents_uncond
 
             # call the callback, if provided
             if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

@@ -12,7 +12,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import numpy as np
 import math
 from time import time
-from encoder_options import Options
+from data_maker.options import Options
 import functools
 import random
 from torch import autocast
@@ -137,30 +137,12 @@ def train_net(rank, world_size, freeport, other_args):
 
         train_sampler.set_epoch(epoch)
         for data_stuff in neural_dataloader:
-            # with torch.no_grad():
-            # start = torch.cuda.Event(enable_timing=True)
-            # end = torch.cuda.Event(enable_timing=True)
-            #
-            # start.record()
 
             neural_data = data_stuff["neural_data"].to(output_device, non_blocking=True) # Flat tensor already
             image_data = data_stuff["image_data"][:,0].to(output_device, non_blocking=True) # collapse along batch
             subj_order = data_stuff["subject_id"].reshape(-1).tolist() # collapse along batch
             optimizer.zero_grad(set_to_none=True)
-            # if rank == 0:
-            #     print(data_stuff["neural_data"].shape, data_stuff["neural_data"].reshape(-1).shape)
-            #     print(data_stuff["image_data"].shape, data_stuff["image_data"].reshape(-1,3,256,256).shape)
-            #     print(data_stuff["subject_id"].shape)
-            #     len_neural = data_stuff["neural_data"][0].shape[0]
-            #     assert torch.allclose(data_stuff["neural_data"][0], data_stuff["neural_data"].reshape(-1)[:len_neural])
-            #     assert torch.allclose(data_stuff["neural_data"][2], data_stuff["neural_data"].reshape(-1)[2*len_neural:3*len_neural])
-            #     assert torch.allclose(data_stuff["neural_data"][3], data_stuff["neural_data"].reshape(-1)[3*len_neural:4*len_neural])
-            #
-            #     assert torch.allclose(data_stuff["image_data"][0], data_stuff["image_data"].reshape(-1,3,256,256)[0])
-            #     assert torch.allclose(data_stuff["image_data"][2], data_stuff["image_data"].reshape(-1,3,256,256)[2])
-            #     assert torch.allclose(data_stuff["image_data"][3], data_stuff["image_data"].reshape(-1,3,256,256)[3])
-            #     print("true thus far")
-            # with autocast(device_type='cuda', dtype=torch.float16):
+
             with torch.autocast("cuda"):
                 with torch.no_grad():
                     features = feature_extractor(shuffle_shift(image_data)+torch.randn_like(image_data)*0.05)
@@ -172,16 +154,8 @@ def train_net(rank, world_size, freeport, other_args):
             if rank==0:
                 total_losses += loss.detach()
                 cur_iter += 1
-                # if cur_iter % 50 == 0:
-                #     print(loss.detach().item())
             loss.backward()
             optimizer.step()
-            # end.record()
-            # torch.cuda.synchronize()
-            # print(start.elapsed_time(end)/1000.0, "TIMES")
-
-
-        # new_lrate = other_args.lr_init * (decay_rate ** (epoch / other_args.epochs))
 
         if rank == 0:
             avg_loss = total_losses.item() / cur_iter
